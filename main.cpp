@@ -11,29 +11,95 @@
 #include <string>
 #include <iostream>
 #include <math.h>
+#include <fstream>
+#include <string>
+#include <sstream>
+#include <array>
 
 //Includes
 #include "Logger.hpp"
+
+#define ASSERT(x) if (!(x)) __builtin_trap();
+#define GLCall(x) GLClearError();\
+    x;\
+    ASSERT(GLLogCall(#x, __FILE__, __LINE__))
+
+static void GLClearError()
+{
+    while(glGetError() != GL_NO_ERROR);
+}
+
+static bool GLLogCall(const char* function, const char* file, int line)
+{
+    while(auto error = glGetError())
+    {
+        LOG(ERROR) << "[OpenGL Error] (" <<  error << ") " << function << " " << file << ":" << line;
+        return false;
+    }
+    return true;
+}
+
+struct ShaderProgramSource
+{
+    std::string vertexSource;
+    std::string fragmentSource;
+};
+
+static ShaderProgramSource ParseShader(const std::string& filepath)
+{
+    auto stream = std::ifstream{filepath};
+
+    enum class ShaderType
+    {
+        NONE = -1, VERTEX = 0, FRAGMENT = 1
+    };
+
+    auto line = std::string{};
+    auto ss = std::array<std::stringstream, 2>{};
+    auto type = ShaderType{ShaderType::NONE};
+
+    while(getline(stream, line))
+    {
+        if(line.find("shader") != std::string::npos)
+        {
+            if(line.find("vertex") != std::string::npos)
+            {
+                type = ShaderType::VERTEX;
+            }
+            else if(line.find("fragment") != std::string::npos)
+            {
+                type = ShaderType::FRAGMENT;
+            }
+        }
+        else
+        {
+            ss.at(static_cast<int>(type)) << line << '\n';
+        }
+    }
+
+    return {ss.at(static_cast<int>(ShaderType::VERTEX)).str(),
+            ss.at(static_cast<int>(ShaderType::FRAGMENT)).str()};
+}
 
 static unsigned int CompileShader(unsigned int type, const std::string& source)
 {
     auto id = glCreateShader(type);
     auto src = source.c_str();
-    glShaderSource(id, 1, &src, nullptr);
-    glCompileShader(id);
+    GLCall(glShaderSource(id, 1, &src, nullptr));
+    GLCall(glCompileShader(id));
 
     auto result = int{};
-    glGetShaderiv(id, GL_COMPILE_STATUS, &result);
+    GLCall(glGetShaderiv(id, GL_COMPILE_STATUS, &result));
 
     if(result == GL_FALSE)
     {
         auto lenght = int{};
-        glGetShaderiv(id, GL_INFO_LOG_LENGTH, &lenght);
+        GLCall(glGetShaderiv(id, GL_INFO_LOG_LENGTH, &lenght));
         auto message = static_cast<char*>(alloca(lenght * sizeof(char)));
-        glGetShaderInfoLog(id, lenght, &lenght, message); 
+        GLCall(glGetShaderInfoLog(id, lenght, &lenght, message)); 
         LOG(ERROR) << "FAILED TO COMPILE " << (type == GL_VERTEX_SHADER ? 
         "GL_VERTEX_SHADER " : "GL_FRAGMENT_SHADER ") << message;
-        glDeleteShader(id);
+        GLCall(glDeleteShader(id));
 
         return 0;
     }
@@ -47,13 +113,13 @@ static int CreateShader(const std::string& vertexShader, const std::string& frag
     auto vs = CompileShader(GL_VERTEX_SHADER, vertexShader);
     auto fs = CompileShader(GL_FRAGMENT_SHADER, fragmentShader);
 
-    glAttachShader(program, vs);
-    glAttachShader(program, fs);
-    glLinkProgram(program);
-    glValidateProgram(program);
+    GLCall(glAttachShader(program, vs));
+    GLCall(glAttachShader(program, fs));
+    GLCall(glLinkProgram(program));
+    GLCall(glValidateProgram(program));
 
-    glDeleteShader(vs);
-    glDeleteShader(fs);
+    GLCall(glDeleteShader(vs));
+    GLCall(glDeleteShader(fs));
 
     return program;
 }
@@ -84,59 +150,51 @@ int main()
         return -1;
     }
 
-    float positions[] = {
+    auto positions = std::array<float, 8>{
         -0.5f, -0.5f,
-         0.0f,  0.5f,
-         0.5f, -0.5f
+         0.5f, -0.5f,
+         0.5f,  0.5f,
+        -0.5f,  0.5f
+    };
+
+    auto indicies = std::array<uint32_t, 6>{
+        0, 1, 2,
+        2, 3, 0
     };
 
     auto buffer = uint32_t{};
-    auto VAO = uint32_t{};
-    glGenVertexArrays(1, &VAO);
-    glBindVertexArray(VAO);
-    glGenBuffers(1, &buffer);
-    glBindBuffer(GL_ARRAY_BUFFER, buffer);
-    glBufferData(GL_ARRAY_BUFFER, 6 * sizeof(float), positions, GL_STATIC_DRAW);
+    auto vao = uint32_t{};
+    auto ibo = uint32_t{};
 
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (void*)0);
+    GLCall(glGenVertexArrays(1, &vao));
+    GLCall(glBindVertexArray(vao));
 
-    const auto vertexShader = std::string
-        {"#version 330 core\n"
-         "\n"
-         "layout(location = 0) in vec4 position;\n"
-         "\n"
-         "void main()\n"
-         "{\n"
-            "gl_Position = position;\n"
-         "}\n"};
+    GLCall(glGenBuffers(1, &buffer));
+    GLCall(glBindBuffer(GL_ARRAY_BUFFER, buffer));
+    GLCall(glBufferData(GL_ARRAY_BUFFER, positions.size() * sizeof(float), &positions, GL_STATIC_DRAW));
 
-    const auto fragmentShader = std::string
-        {"#version 330 core\n"
-         "\n"
-         "out vec4 color;\n"
-         "\n"
-         "void main()\n"
-         "{\n"
-            "color = vec4(1.0, 0.0, 0.0, 1.0);\n"
-         "}\n"};
+    GLCall(glGenBuffers(1, &ibo));
+    GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo));
+    GLCall(glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicies.size() * sizeof(uint32_t), &indicies, GL_STATIC_DRAW));
 
+    GLCall(glEnableVertexAttribArray(0));
+    GLCall(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (void*)0));
 
-    const auto shader = CreateShader(vertexShader, fragmentShader);
-    glUseProgram(shader);
- 
+    const auto shaderSource = ParseShader("../shaders/shader.shader");
+    const auto shader = CreateShader(shaderSource.vertexSource, shaderSource.fragmentSource);
+    GLCall(glUseProgram(shader)); 
 
     while (!glfwWindowShouldClose(window))
     {
-        glClear(GL_COLOR_BUFFER_BIT);
+        GLCall(glClear(GL_COLOR_BUFFER_BIT));
 
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        GLCall(glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr));
 
-        glfwSwapBuffers(window);
+        GLCall(glfwSwapBuffers(window));
 
-        glfwPollEvents();
+        GLCall(glfwPollEvents());
     }
 
-    glfwTerminate();
+    GLCall(glfwTerminate());
     return 0;
 }
