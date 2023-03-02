@@ -21,6 +21,7 @@
 #include "IndexBuffer.hpp"
 #include "VertexBuffer.hpp"
 #include "ErrorHandle.hpp"
+#include "VertexArray.hpp"
 
 struct ShaderProgramSource
 {
@@ -146,15 +147,12 @@ int main()
         2, 3, 0
     };
 
-    auto vao = uint32_t{};
-
-    GLCall(glGenVertexArrays(1, &vao));
-    GLCall(glBindVertexArray(vao));
-
+    auto vertexArray = VertexArray{};
     auto vertexBuffer = VertexBuffer{&positions, positions.size() * sizeof(float)};
+    auto vertexBufferLayout = VertexBufferLayout{};
 
-    GLCall(glEnableVertexAttribArray(0));
-    GLCall(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (void*)0));
+    vertexBufferLayout.Push<float>(2);
+    vertexArray.AddBuffer(vertexBuffer, vertexBufferLayout);
 
     auto indexBuffer = IndexBuffer{(const uint32_t*)&indicies, 6};
     
