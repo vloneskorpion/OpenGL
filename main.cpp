@@ -18,26 +18,9 @@
 
 //Includes
 #include "Logger.hpp"
-
-#define ASSERT(x) if (!(x)) __builtin_trap();
-#define GLCall(x) GLClearError();\
-    x;\
-    ASSERT(GLLogCall(#x, __FILE__, __LINE__))
-
-static void GLClearError()
-{
-    while(glGetError() != GL_NO_ERROR);
-}
-
-static bool GLLogCall(const char* function, const char* file, int line)
-{
-    while(auto error = glGetError())
-    {
-        LOG(ERROR) << "[OpenGL Error] (" <<  error << ") " << function << " " << file << ":" << line;
-        return false;
-    }
-    return true;
-}
+#include "IndexBuffer.hpp"
+#include "VertexBuffer.hpp"
+#include "ErrorHandle.hpp"
 
 struct ShaderProgramSource
 {
@@ -143,6 +126,7 @@ int main()
     }
 
     glfwMakeContextCurrent(window);
+    glfwSwapInterval(1);
 
     if(!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
     {
@@ -162,33 +146,33 @@ int main()
         2, 3, 0
     };
 
-    auto buffer = uint32_t{};
     auto vao = uint32_t{};
-    auto ibo = uint32_t{};
 
     GLCall(glGenVertexArrays(1, &vao));
     GLCall(glBindVertexArray(vao));
 
-    GLCall(glGenBuffers(1, &buffer));
-    GLCall(glBindBuffer(GL_ARRAY_BUFFER, buffer));
-    GLCall(glBufferData(GL_ARRAY_BUFFER, positions.size() * sizeof(float), &positions, GL_STATIC_DRAW));
-
-    GLCall(glGenBuffers(1, &ibo));
-    GLCall(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo));
-    GLCall(glBufferData(GL_ELEMENT_ARRAY_BUFFER, indicies.size() * sizeof(uint32_t), &indicies, GL_STATIC_DRAW));
+    auto vertexBuffer = VertexBuffer{&positions, positions.size() * sizeof(float)};
 
     GLCall(glEnableVertexAttribArray(0));
     GLCall(glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (void*)0));
 
+    auto indexBuffer = IndexBuffer{(const uint32_t*)&indicies, 6};
+    
     const auto shaderSource = ParseShader("../shaders/shader.shader");
     const auto shader = CreateShader(shaderSource.vertexSource, shaderSource.fragmentSource);
-    GLCall(glUseProgram(shader)); 
+    GLCall(glUseProgram(shader));
+
+    auto location = glGetUniformLocation(shader, "u_Color");
+    ASSERT(location != -1);
 
     while (!glfwWindowShouldClose(window))
     {
         GLCall(glClear(GL_COLOR_BUFFER_BIT));
 
-        GLCall(glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, nullptr));
+        auto r = sin(glfwGetTime());
+        auto b = cos(glfwGetTime());
+        GLCall(glUniform4f(location, r, b, 0.8f, 1.0f));
+        GLCall(glDrawElements(GL_TRIANGLES, indexBuffer.GetCount(), GL_UNSIGNED_INT, nullptr));
 
         GLCall(glfwSwapBuffers(window));
 
