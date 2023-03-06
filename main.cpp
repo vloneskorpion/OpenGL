@@ -17,15 +17,13 @@
 
 //Includes
 #include "Logger.hpp"
-#include "IndexBuffer.hpp"
-#include "VertexBuffer.hpp"
 #include "ErrorHandle.hpp"
-#include "VertexArray.hpp"
-#include "Shader.hpp"
+#include "Renderer.hpp"
+#include "Texture.hpp"
 
 int main()
 {
-    Logger logger{"../dependencies/easylogging/configuration.conf"};
+    auto logger = Logger{"../dependencies/easylogging/configuration.conf"};
 
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -50,11 +48,11 @@ int main()
         return -1;
     }
 
-    auto positions = std::array<float, 8>{
-        -0.5f, -0.5f,
-         0.5f, -0.5f,
-         0.5f,  0.5f,
-        -0.5f,  0.5f
+    auto positions = std::array<float, 16>{
+        100.0f, 100.0f, 0.0f, 0.0f,
+        200.0f, 100.0f, 1.0f, 0.0f,
+        200.0f, 200.0f, 1.0f, 1.0f,
+        100.0f, 200.0f, 0.0f, 1.0f,
     };
 
     auto indicies = std::array<uint32_t, 6>{
@@ -62,29 +60,45 @@ int main()
         2, 3, 0
     };
 
+    GLCall(glEnable(GL_BLEND));
+    GLCall(glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA));
+
     auto vertexArray = VertexArray{};
     auto vertexBuffer = VertexBuffer{&positions, positions.size() * sizeof(float)};
     auto vertexBufferLayout = VertexBufferLayout{};
 
     vertexBufferLayout.Push<float>(2);
+    vertexBufferLayout.Push<float>(2);
     vertexArray.AddBuffer(vertexBuffer, vertexBufferLayout);
 
     auto indexBuffer = IndexBuffer{(const uint32_t*)&indicies, 6};
-    
-    Shader shader("../shaders/shader.shader");
+
+    auto proj = glm::ortho(0.0f, 960.0f, 0.0f, 540.0f, -1.0f, 1.0f);
+    auto view = glm::translate(glm::mat4(1.0f), glm::vec3(-100, 0, 0));
+    auto model = glm::translate(glm::mat4(1.0f), glm::vec3(0, 300, 0));
+    auto mvp = proj * view * model;
+
+    auto shader = Shader{"../shaders/shader.shader"};
     shader.Bind();
+    shader.SetUniformMatrix4f("u_MVP", mvp);
+
+    auto texture = Texture{"../resources/textures/texture.jpg"};
+    texture.Bind();
+    shader.SetUniform1i("u_Texture", 0);
+
+    vertexArray.Unbind();
+    vertexBuffer.Unbind();
+    indexBuffer.Unbind();
+    shader.Unbind();
+
+    auto renderer = Renderer{};
 
     while (!glfwWindowShouldClose(window))
     {
-        GLCall(glClear(GL_COLOR_BUFFER_BIT));
-
-        auto r = sin(glfwGetTime());
-        auto b = cos(glfwGetTime());
-        shader.SetUniform4f("u_Color", r, 1.0, b, 1.0);
-        GLCall(glDrawElements(GL_TRIANGLES, indexBuffer.GetCount(), GL_UNSIGNED_INT, nullptr));
+        renderer.Clear();
+        renderer.Draw(vertexArray, indexBuffer, shader);
 
         GLCall(glfwSwapBuffers(window));
-
         GLCall(glfwPollEvents());
     }
 

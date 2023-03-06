@@ -10,5 +10,6 @@ class Renderer
         Renderer();
         ~Renderer();
 
-        void Draw(const VertexArray& va, const IndexBuffer& ib, const Shader& shader) const;
+        void Clear() const;
+        void Draw(const VertexArray& vertexArray, const IndexBuffer& indexBuffer, const Shader& shader) const;
 };
