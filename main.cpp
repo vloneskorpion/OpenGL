@@ -5,14 +5,9 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+#include <imgui/imgui.h>
 
 //Standard libs
-#include <iostream>
-#include <math.h>
-#include <fstream>
-#include <string>
-#include <sstream>
 #include <array>
 
 //Includes
@@ -20,6 +15,7 @@
 #include "ErrorHandle.hpp"
 #include "Renderer.hpp"
 #include "Texture.hpp"
+#include <imgui/imgui_impl_glfw_gl3.h>
 
 int main()
 {
@@ -75,12 +71,9 @@ int main()
 
     auto proj = glm::ortho(0.0f, 960.0f, 0.0f, 540.0f, -1.0f, 1.0f);
     auto view = glm::translate(glm::mat4(1.0f), glm::vec3(-100, 0, 0));
-    auto model = glm::translate(glm::mat4(1.0f), glm::vec3(0, 300, 0));
-    auto mvp = proj * view * model;
 
     auto shader = Shader{"../shaders/shader.shader"};
     shader.Bind();
-    shader.SetUniformMatrix4f("u_MVP", mvp);
 
     auto texture = Texture{"../resources/textures/texture.jpg"};
     texture.Bind();
@@ -93,15 +86,40 @@ int main()
 
     auto renderer = Renderer{};
 
+    ImGui::CreateContext();
+    ImGui_ImplGlfwGL3_Init(window, true);
+    ImGui::StyleColorsDark();
+
+    auto translation = glm::vec3{200, 200, 0};
+
     while (!glfwWindowShouldClose(window))
     {
         renderer.Clear();
+
+        ImGui_ImplGlfwGL3_NewFrame();
+
+        auto model = glm::translate(glm::mat4(1.0f), translation);
+        auto mvp = proj * view * model;
+
+        shader.Bind();
+        shader.SetUniformMatrix4f("u_MVP", mvp);
+
         renderer.Draw(vertexArray, indexBuffer, shader);
+
+        {
+            ImGui::SliderFloat3("Translation X", &translation.x, 0.0f, 960.0f);
+            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        }
+
+        ImGui::Render();
+        ImGui_ImplGlfwGL3_RenderDrawData(ImGui::GetDrawData());
 
         GLCall(glfwSwapBuffers(window));
         GLCall(glfwPollEvents());
     }
 
+    ImGui_ImplGlfwGL3_Shutdown();
+    ImGui::DestroyContext();
     GLCall(glfwTerminate());
     return 0;
 }
